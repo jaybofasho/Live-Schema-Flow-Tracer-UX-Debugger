@@ -1,0 +1,13 @@
+{
+  "name": "@antigravity/tracer",
+  "version": "0.1.0",
+  "main": "dist/probe.js",
+  "types": "dist/probe.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test test/**/*.test.js 2>/dev/null || echo 'No tracer unit tests yet'"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

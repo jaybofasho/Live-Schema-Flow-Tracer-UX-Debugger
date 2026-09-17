@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Target Application Under Test - Antigravity Demo</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 32px;
+      width: 380px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    h2 { margin-top: 0; font-size: 20px; color: var(--accent); }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; margin-bottom: 6px; color: #94a3b8; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      background: #090d16;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #fff;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #0284c7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0369a1; }
+    .status {
+      margin-top: 16px;
+      padding: 10px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      font-size: 12px;
+      color: var(--accent);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card" id="loginCard">
+    <h2>Antigravity Cloud Portal</h2>
+    <p style="font-size: 13px; color: #94a3b8; margin-bottom: 20px;">Test target for live recording & dynamic debugging</p>
+
+    <form id="authForm">
+      <div class="form-group">
+        <label for="emailInput">Developer Email</label>
+        <input type="email" id="emailInput" placeholder="developer@antigravity.dev" required>
+      </div>
+      <div class="form-group">
+        <label for="passwordInput">Security Token</label>
+        <input type="password" id="passwordInput" placeholder="••••••••••••" required>
+      </div>
+      <button type="submit" id="btnSubmit">Authenticate & Launch Dashboard</button>
+    </form>
+
+    <div class="status" id="statusBox"></div>
+  </div>
+
+  <!-- Injected or embedded probe for testing -->
+  <script src="../packages/tracer/dist/probe.js"></script>
+  <script>
+    // Simulate React Component Fiber attachment for AST/source mapping
+    const submitBtn = document.getElementById('btnSubmit');
+    submitBtn.__reactFiber$fake = {
+      type: { name: 'AuthSubmitButton' },
+      _debugSource: {
+        fileName: 'src/components/AuthSubmitButton.tsx',
+        lineNumber: 42,
+        columnNumber: 5
+      },
+      memoizedProps: {
+        onClick: function handleAuthSubmit() {}
+      }
+    };
+
+    document.getElementById('authForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const statusBox = document.getElementById('statusBox');
+      statusBox.style.display = 'block';
+      statusBox.innerText = 'Token verified! Navigating to /dashboard...';
+
+      setTimeout(() => {
+        history.pushState({}, '', '/dashboard');
+      }, 500);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "live-schema-flow-tracer-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live recording, UX-mapping, Mermaid/ERD schema synchronization, video export with voiceover dubbing, and dynamic debugging",
+  "author": "JayBoFaSho",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "compile": "tsc -b",
+    "test": "node --test packages/extension/test/*.test.js packages/sidecar/test/*.test.js",
+    "start:sidecar": "npm --workspace=packages/sidecar run start",
+    "build:overlay": "npm --workspace=packages/sidecar run build:overlay"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

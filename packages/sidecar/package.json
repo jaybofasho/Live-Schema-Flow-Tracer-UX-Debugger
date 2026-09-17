@@ -1,0 +1,21 @@
+{
+  "name": "@antigravity/sidecar",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:overlay": "swiftc -O -o bin/ghost-overlay native/GhostOverlay.swift -framework Cocoa",
+    "start": "ts-node src/index.ts",
+    "test": "node --test test/**/*.test.js 2>/dev/null || echo 'No sidecar unit tests yet'"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

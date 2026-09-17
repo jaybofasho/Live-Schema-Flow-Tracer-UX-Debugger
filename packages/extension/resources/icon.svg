@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+  <defs>
+    <filter id="neon-blue-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="0.8" flood-color="#00f0ff" flood-opacity="0.9"/>
+    </filter>
+  </defs>
+  <g fill="none" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#neon-blue-glow)">
+    <!-- Orbital ellipses in neon blue -->
+    <ellipse cx="14" cy="14" rx="11" ry="5.5" stroke="#00f0ff" stroke-width="1.8" transform="rotate(-30 14 14)"/>
+    <ellipse cx="14" cy="14" rx="11" ry="5.5" stroke="#00f0ff" stroke-width="1.8" transform="rotate(30 14 14)"/>
+    
+    <!-- Flow Nodes (filled with bright neon cyan) -->
+    <circle cx="5" cy="9" r="1.6" fill="#00f0ff" stroke="#00f0ff" stroke-width="0.5"/>
+    <circle cx="23" cy="19" r="1.6" fill="#00f0ff" stroke="#00f0ff" stroke-width="0.5"/>
+    <circle cx="23" cy="9" r="1.6" fill="#00f0ff" stroke="#00f0ff" stroke-width="0.5"/>
+    <circle cx="5" cy="19" r="1.6" fill="#00f0ff" stroke="#00f0ff" stroke-width="0.5"/>
+
+    <!-- Central Target / Tracer Pin Reticle -->
+    <circle cx="14" cy="14" r="3.4" stroke="#00f0ff" stroke-width="1.8"/>
+    <circle cx="14" cy="14" r="1.4" fill="#00f0ff"/>
+    <line x1="14" y1="7.8" x2="14" y2="10.8" stroke="#00f0ff" stroke-width="1.8"/>
+    <line x1="14" y1="17.2" x2="14" y2="20.2" stroke="#00f0ff" stroke-width="1.8"/>
+    <line x1="7.8" y1="14" x2="10.8" y2="14" stroke="#00f0ff" stroke-width="1.8"/>
+    <line x1="17.2" y1="14" x2="20.2" y2="14" stroke="#00f0ff" stroke-width="1.8"/>
+  </g>
+</svg>

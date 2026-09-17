@@ -1,0 +1,13 @@
+[package]
+name = "antigravity-rust-sidecar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+tokio-tungstenite = "0.23"
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rdev = "0.5" # Global input hooking
+# xcap = "0.0.14" # Screen capture

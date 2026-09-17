@@ -1,0 +1,43 @@
+// Sample Rust implementation using tokio, tokio-tungstenite, and rdev
+use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::accept_async;
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+enum TracerMessage {
+    HOTKEY_PAUSE { sessionId: String, step: u32, timestamp: u64, x: f64, y: f64, frozen: bool },
+    HOTKEY_RESUME { sessionId: String, timestamp: u64 },
+    HOTKEY_DEBUG { sessionId: String, step: u32, timestamp: u64 },
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let addr = "127.0.0.1:54321".parse::<SocketAddr>()?;
+    let listener = TcpListener::bind(&addr).await?;
+    println!("[Rust Sidecar] Listening on ws://{}", addr);
+
+    // Global hotkey listening loop can run in a background std::thread using rdev::listen
+    // and send events over a tokio mpsc channel.
+
+    while let Ok((stream, _)) = listener.accept().await {
+        tokio::spawn(handle_connection(stream));
+    }
+
+    Ok(())
+}
+
+async fn handle_connection(stream: TcpStream) {
+    if let Ok(mut ws_stream) = accept_async(stream).await {
+        println!("[Rust Sidecar] Extension client connected");
+        while let Some(msg) = ws_stream.next().await {
+            if let Ok(msg) = msg {
+                if msg.is_text() {
+                    println!("[Rust Sidecar] Received: {:?}", msg.to_text());
+                }
+            }
+        }
+    }
+}

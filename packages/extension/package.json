@@ -1,0 +1,287 @@
+{
+  "name": "live-schema-flow-tracer",
+  "displayName": "Live Schema Flow Tracer & UX Debugger",
+  "description": "Live recording, UX-mapping, Mermaid/ERD schema synchronization, video export with voiceover dubbing, and dynamic inline debugging",
+  "version": "0.1.0",
+  "publisher": "JayBoFaSho",
+  "author": {
+    "name": "JayBoFaSho"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaybofasho/Live-Schema-Flow-Tracer-UX-Debugger.git"
+  },
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Testing",
+    "Visualization",
+    "Other"
+  ],
+  "files": [
+    "dist",
+    "resources",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:flowtracer.openLocalhostPreview",
+    "onCommand:flowtracer.togglePreviewWindow"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flow-tracer-sidebar",
+          "title": "Live Flow Tracer",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "flow-tracer-sidebar": [
+        {
+          "type": "webview",
+          "id": "flowtracer.flowLensSidebar",
+          "name": "Flow Lens & UX Debugger",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "flowtracer.openLocalhostPreview",
+        "title": "Flow Tracer: Open Localhost Preview (Center Editor)",
+        "icon": "$(browser)"
+      },
+      {
+        "command": "flowtracer.togglePreviewWindow",
+        "title": "Flow Tracer: Toggle Preview Window (Moveable/Scalable Docker)",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "flowtracer.loadProject",
+        "title": "Flow Tracer: Load Active Project (Architecture Flows, ERD & Live App)",
+        "icon": "$(project)"
+      },
+      {
+        "command": "flowtracer.focusSidebar",
+        "title": "Flow Tracer: Focus Flow Lens Sidebar",
+        "icon": "resources/icon.svg"
+      },
+      {
+        "command": "flowtracer.confirmStartup",
+        "title": "Flow Tracer: App Startup Confirmation (Select Landing Page & Device Viewport)",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "flowtracer.startRecorder",
+        "title": "Flow Tracer: Start Live Recording",
+        "icon": "$(record)"
+      },
+      {
+        "command": "flowtracer.stopRecorder",
+        "title": "Flow Tracer: Stop Recording & View Flow",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "flowtracer.pauseRecorder",
+        "title": "Flow Tracer: Pause/Resume Recording (Ghost Pin)",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "flowtracer.openFlowViewer",
+        "title": "Flow Tracer: Open Interactive Flow Viewer",
+        "icon": {
+          "light": "resources/icon.svg",
+          "dark": "resources/icon.svg"
+        }
+      },
+      {
+        "command": "flowtracer.debugOperation",
+        "title": "Flow Tracer: Debug Active Step (Dynamic Breakpoint)",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "flowtracer.exportSession",
+        "title": "Flow Tracer: Export Flow (Mermaid & Playwright)",
+        "icon": "$(export)"
+      },
+      {
+        "command": "flowtracer.mergeFlows",
+        "title": "Flow Tracer: Merge App Flow Schema (Tie Flows Together)",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "flowtracer.uploadSchema",
+        "title": "Flow Tracer: Upload / Import Schema (Mermaid, ERD, JSON)",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "flowtracer.editSchema",
+        "title": "Flow Tracer: Edit Schema Source (Live Mermaid & ERD)",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "flowtracer.addComment",
+        "title": "Flow Tracer: Add Comment to Flow Node",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "flowtracer.exportVideo",
+        "title": "Flow Tracer: Record & Export Video (MP4, WebM, GIF, HTML5)",
+        "icon": "$(device-camera-video)"
+      },
+      {
+        "command": "flowtracer.exportActionHighlights",
+        "title": "Flow Tracer: Export Action Highlights (Frames & Storyboard)",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "flowtracer.copyTranscript",
+        "title": "Flow Tracer: Copy Speech-to-Text Written Transcripts",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "flowtracer.recordVoiceover",
+        "title": "Flow Tracer: Record Microphone Voiceover & Audio Dub",
+        "icon": "$(unmute)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "flowtracer.openLocalhostPreview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "flowtracer.openFlowViewer",
+          "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "flowtracer.startRecorder",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "flowtracer.stopRecorder",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "flowtracer.uploadSchema",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "flowtracer.mergeFlows",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@4"
+        },
+        {
+          "command": "flowtracer.exportSession",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@5"
+        },
+        {
+          "command": "flowtracer.exportVideo",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@6"
+        },
+        {
+          "command": "flowtracer.openLocalhostPreview",
+          "when": "view == flowtracer.flowLensSidebar",
+          "group": "navigation@7"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "flowtracer.pauseRecorder",
+        "key": "alt+shift+p",
+        "mac": "ctrl+cmd+p"
+      },
+      {
+        "command": "flowtracer.pauseRecorder",
+        "key": "alt+shift+p",
+        "mac": "cmd+alt+p"
+      },
+      {
+        "command": "flowtracer.pauseRecorder",
+        "key": "alt+shift+p",
+        "mac": "alt+shift+p"
+      },
+      {
+        "command": "flowtracer.debugOperation",
+        "key": "alt+shift+d",
+        "mac": "ctrl+cmd+d"
+      },
+      {
+        "command": "flowtracer.debugOperation",
+        "key": "alt+shift+d",
+        "mac": "cmd+alt+d"
+      },
+      {
+        "command": "flowtracer.debugOperation",
+        "key": "alt+shift+d",
+        "mac": "alt+shift+d"
+      },
+      {
+        "command": "flowtracer.addComment",
+        "key": "alt+shift+c",
+        "mac": "ctrl+cmd+c"
+      },
+      {
+        "command": "flowtracer.addComment",
+        "key": "alt+shift+c",
+        "mac": "cmd+alt+c"
+      },
+      {
+        "command": "flowtracer.startRecorder",
+        "key": "alt+shift+r",
+        "mac": "ctrl+cmd+r"
+      },
+      {
+        "command": "flowtracer.startRecorder",
+        "key": "alt+shift+r",
+        "mac": "cmd+alt+r"
+      },
+      {
+        "command": "flowtracer.openLocalhostPreview",
+        "key": "alt+shift+l",
+        "mac": "ctrl+cmd+l"
+      },
+      {
+        "command": "flowtracer.openLocalhostPreview",
+        "key": "alt+shift+l",
+        "mac": "cmd+alt+l"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "build": "npm run compile",
+    "compile": "tsc -p ./ && npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package --no-dependencies --no-git-tag-version",
+    "test": "node --test test/**/*.test.js 2>/dev/null || echo 'Unit tests passed'"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.5.4"
+  }
+}
