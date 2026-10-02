@@ -2,7 +2,8 @@
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://marketplace.visualstudio.com)
 [![Publisher](https://img.shields.io/badge/publisher-JayBoFaSho-purple.svg)](https://github.com/JayBoFaSho)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#-license--attribution)
+[![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-green.svg)](#-license--attribution)
+[![Pro Available](https://img.shields.io/badge/Flow%20Tracer-PRO%20Available-purple.svg)](#-free-vs-pro-editions)
 [![Platform](https://img.shields.io/badge/IDE-VS%20Code%20%7C%20Cursor%20%7C%20Antigravity-orange.svg)](#)
 
 **Live Schema Flow Tracer & UX Debugger** is a next-generation developer studio and real-time visual tracing extension for VS Code, Cursor, and modern AI IDEs. It provides live user journey mapping, bi-directional Mermaid & ERD schema synchronization, video export with voiceover dubbing & STT transcripts, multi-device viewport testing, and dynamic inline DAP breakpoints.
@@ -117,7 +118,37 @@ Launch `demo-app/index.html` or serve via a local server. Open the extension in 
 
 ---
 
+## ⚡ Free vs. Pro Editions
+
+Flow Tracer is designed with an **open-core, offline-first** architecture. The core development and debugging engine is completely free for individual developer use, while studio-grade export and documentation accelerators are part of **Flow Tracer Pro**.
+
+| Feature | Community / Free | Flow Tracer Pro |
+|---|:---:|:---:|
+| **Live UX Flow Position Recognition** | ✅ Full | ✅ Full |
+| **Dynamic Breakpoints & Ghost Mouse Pin** | ✅ Full | ✅ Full |
+| **Universal Schema Import & Bi-Directional Editor** | ✅ Full | ✅ Full |
+| **Interactive Flow Viewer Canvas** | ✅ Full | ✅ Full |
+| **Interactive HTML5 Player Export** | ✅ Full | ✅ Full |
+| **WebM Video Export (Balanced & Compact)** | ✅ Full | ✅ Full |
+| **Plain Text & Markdown Transcript Copy** | ✅ Full | ✅ Full |
+| **Studio Video Exporter (MP4, GIF, Action Frame Bundles)** | — | ⚡ **PRO** |
+| **High & Ultra HQ Compression Presets** | — | ⚡ **PRO** |
+| **Microphone Voiceover Dubbing Studio** | — | ⚡ **PRO** |
+| **One-Click Jira Issue Tables & SRT Subtitle Export** | — | ⚡ **PRO** |
+| **Offline License Cryptographic Verification** | — | ⚡ **PRO** |
+
+### Activating Pro
+1. Obtain a license key from [Polar.sh](https://polar.sh/thrice-wise-enterprise/subscriptions).
+2. Open VS Code Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
+3. Run **`Flow Tracer: Enter License Key`** and paste your key.
+4. Activation completes with an offline-verifiable signature bound to your machine. No continuous internet connection required!
+
+---
+
 ## 📄 License & Attribution
 
 - **Publisher**: **JayBoFaSho**
-- **License**: MIT License
+- **License**: **Functional Source License, Version 1.1, MIT Change License (FSL-1.1-MIT)**
+- **Permitted Use**: Free for non-commercial and individual development use. Commercial and enterprise production use requires an authorized license key.
+- **Conversion to MIT**: Each release automatically converts to standard open-source MIT License two (2) years after release.
+

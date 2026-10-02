@@ -3,11 +3,15 @@ import { FlowGraphModel } from '../graph/FlowGraphModel';
 import { DebugController } from '../dap/DebugController';
 import { MermaidExporter } from '../export/MermaidExporter';
 import { PlaywrightExporter } from '../export/PlaywrightExporter';
+import { CypressExporter } from '../export/CypressExporter';
 import { MermaidSchemaParser } from '../parser/MermaidSchemaParser';
 import { VideoRecordingExporter, VideoExportConfig } from '../export/VideoRecordingExporter';
+import { LicenseManager } from '../license/LicenseManager';
+import { WorkspaceRouteDetector, WorkspaceRoute } from '../discovery/WorkspaceRouteDetector';
 
 export class FlowPanel {
   public static currentPanel: FlowPanel | undefined;
+  public static licenseManager?: LicenseManager;
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
   private disposables: vscode.Disposable[] = [];
@@ -15,6 +19,9 @@ export class FlowPanel {
   private debugController: DebugController;
   private isRecording: boolean = false;
   private isPaused: boolean = false;
+  private workspaceRoutes: WorkspaceRoute[] = [];
+  private defaultDevUrl: string = 'http://localhost:3000';
+  private customRoutes: string[] = [];
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -30,6 +37,7 @@ export class FlowPanel {
     if (FlowPanel.currentPanel) {
       FlowPanel.currentPanel.panel.reveal(column);
       FlowPanel.currentPanel.updateData(isRecording, isPaused);
+      FlowPanel.currentPanel.refreshWorkspaceRoutes();
       return FlowPanel.currentPanel;
     }
 
@@ -65,7 +73,12 @@ export class FlowPanel {
     this.isRecording = isRecording;
     this.isPaused = isPaused;
 
-    this.panel.webview.html = this.getHtmlForWebview();
+    // Discover initial workspace routes immediately for webview render
+    const scan = WorkspaceRouteDetector.discoverWorkspaceRoutesSync(undefined, this.model);
+    this.workspaceRoutes = scan.routes;
+    this.defaultDevUrl = scan.defaultDevUrl;
+
+    this.panel.webview.html = this.getHtmlForWebview(this.workspaceRoutes, this.defaultDevUrl);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
@@ -135,6 +148,16 @@ export class FlowPanel {
             });
             await vscode.window.showTextDocument(docP);
             vscode.window.showInformationMessage('Playwright E2E spec generated!');
+            break;
+
+          case 'exportCypress':
+            const cypressCode = CypressExporter.export(this.model);
+            const docC = await vscode.workspace.openTextDocument({
+              content: cypressCode,
+              language: 'typescript'
+            });
+            await vscode.window.showTextDocument(docC);
+            vscode.window.showInformationMessage('Cypress E2E spec generated!');
             break;
 
           case 'mergeFlows':
@@ -218,9 +241,22 @@ export class FlowPanel {
 
           case 'copyTranscript':
             const fmt = message.format || 'markdown';
+            if (fmt === 'jira' || fmt === 'srt') {
+              if (FlowPanel.licenseManager && !(await FlowPanel.licenseManager.enforceProFeature(`Copy Transcript in ${fmt.toUpperCase()} format`))) {
+                break;
+              }
+            }
             const copyContent = this.model.getFormattedTranscript(fmt);
             await vscode.env.clipboard.writeText(copyContent);
             vscode.window.showInformationMessage(`Copied ${fmt.toUpperCase()} transcript to clipboard (${this.model.speechTranscripts.length} entries).`);
+            break;
+
+          case 'activateLicense':
+            await vscode.commands.executeCommand('flowtracer.activateLicense');
+            break;
+
+          case 'checkLicenseStatus':
+            await vscode.commands.executeCommand('flowtracer.checkLicenseStatus');
             break;
 
           case 'openExternalUrl':
@@ -239,7 +275,31 @@ export class FlowPanel {
             }
             break;
 
+          case 'refreshWorkspaceRoutes':
+            await this.refreshWorkspaceRoutes();
+            vscode.window.showInformationMessage(`🔄 Flow Tracer: Discovered ${this.workspaceRoutes.length} workspace routes.`);
+            break;
+
+          case 'addCustomWorkspaceRoute':
+            if (message.route) {
+              if (!this.customRoutes.includes(message.route)) {
+                this.customRoutes.push(message.route);
+                await this.refreshWorkspaceRoutes();
+                vscode.window.showInformationMessage(`Added quick route "${message.route}".`);
+              }
+            }
+            break;
+
+          case 'removeCustomWorkspaceRoute':
+            if (message.route) {
+              this.customRoutes = this.customRoutes.filter(r => r !== message.route);
+              await this.refreshWorkspaceRoutes();
+              vscode.window.showInformationMessage(`Removed route "${message.route}".`);
+            }
+            break;
+
           case 'ready':
+            await this.refreshWorkspaceRoutes();
             this.updateData();
             break;
         }
@@ -249,11 +309,37 @@ export class FlowPanel {
     );
   }
 
+  public async refreshWorkspaceRoutes(): Promise<void> {
+    const scan = await WorkspaceRouteDetector.discoverWorkspaceRoutes(undefined, this.model, this.customRoutes);
+    this.workspaceRoutes = scan.routes;
+    this.defaultDevUrl = scan.defaultDevUrl;
+    if (this.panel) {
+      this.panel.webview.postMessage({
+        command: 'SET_WORKSPACE_ROUTES',
+        routes: this.workspaceRoutes,
+        defaultUrl: this.defaultDevUrl
+      });
+    }
+  }
+
+  public updateWorkspaceRoutes(routes: WorkspaceRoute[], defaultDevUrl?: string): void {
+    this.workspaceRoutes = routes;
+    if (defaultDevUrl) this.defaultDevUrl = defaultDevUrl;
+    if (this.panel) {
+      this.panel.webview.postMessage({
+        command: 'SET_WORKSPACE_ROUTES',
+        routes: this.workspaceRoutes,
+        defaultUrl: this.defaultDevUrl
+      });
+    }
+  }
+
   public showPreviewDocker(url?: string): void {
     this.panel.reveal(vscode.ViewColumn.One);
+    const target = url || this.model.landingPage?.url || this.defaultDevUrl || 'http://localhost:3000';
     this.panel.webview.postMessage({
       command: 'SHOW_PREVIEW_DOCKER',
-      url: url || this.model.landingPage?.url || 'http://localhost:8081'
+      url: target
     });
   }
 
@@ -271,15 +357,21 @@ export class FlowPanel {
     });
   }
 
-  public updateData(isRecording?: boolean, isPaused?: boolean): void {
+  public async updateData(isRecording?: boolean, isPaused?: boolean): Promise<void> {
     if (typeof isRecording === 'boolean') this.isRecording = isRecording;
     if (typeof isPaused === 'boolean') this.isPaused = isPaused;
+    const isPro = FlowPanel.licenseManager ? await FlowPanel.licenseManager.isProUser() : false;
     if (this.panel) {
       this.panel.webview.postMessage({
         command: 'UPDATE_GRAPH',
         data: this.model.toJSON(),
         isRecording: this.isRecording,
-        isPaused: this.isPaused
+        isPaused: this.isPaused,
+        isPro
+      });
+      this.panel.webview.postMessage({
+        command: 'SET_LICENSE_STATE',
+        isPro
       });
     }
   }
@@ -295,7 +387,15 @@ export class FlowPanel {
     }
   }
 
-  private getHtmlForWebview(): string {
+  private getHtmlForWebview(routes?: WorkspaceRoute[], defaultUrl?: string): string {
+    const activeRoutes = (routes && routes.length > 0)
+      ? routes
+      : [{ path: '/', label: '/ (Home)', source: 'default' as const }];
+    const activeUrl = defaultUrl || this.defaultDevUrl || 'http://localhost:3000';
+    const initialRouteChipsHtml = activeRoutes
+      .map(r => `<button class="route-chip${r.path === '/' || r.cleanPath === '/' ? ' active' : ''}" data-path="${r.path}" data-clean-path="${r.cleanPath || r.path}" title="${r.relativeFilePath || r.path} (${r.source})">${r.label}</button>`)
+      .join('\n        ');
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -441,16 +541,164 @@ export class FlowPanel {
       position: relative;
     }
 
-    /* Graph Canvas */
+    /* Graph Canvas (Dot Matrix Canvas Viewport) */
     #graphCanvas {
       flex: 1;
       position: relative;
-      background: radial-gradient(circle at 50% 50%, #111827 0%, #030712 100%);
-      overflow: auto;
+      background-color: #070a13;
+      background-image:
+        radial-gradient(circle, rgba(56, 189, 248, 0.28) 1.25px, transparent 1.25px),
+        radial-gradient(circle, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+      background-size: 24px 24px, 24px 24px;
+      background-position: 0px 0px, 12px 12px;
+      overflow: hidden;
+      cursor: grab;
+      user-select: none;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 60px;
+      outline: none;
+    }
+
+    #graphCanvas.is-panning {
+      cursor: grabbing;
+    }
+
+    /* Transform Layer for Pan & Zoom */
+    .graph-viewport {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform-origin: center center;
+      will-change: transform;
+      transition: transform 0.08s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: max-content;
+      min-height: max-content;
+    }
+
+    .graph-viewport.no-transition {
+      transition: none;
+    }
+
+    /* Canvas Navigation HUD */
+    .canvas-hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(10, 14, 23, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 1px rgba(56, 189, 248, 0.2);
+      border-radius: 12px;
+      padding: 6px 10px;
+      z-index: 15;
+      user-select: none;
+      pointer-events: auto;
+    }
+
+    .canvas-hud-divider {
+      width: 1px;
+      height: 32px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* 4-Directional D-Pad */
+    .canvas-dpad {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .dpad-middle {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .dpad-btn {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      color: #94a3b8;
+      font-size: 9px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      padding: 0;
+    }
+
+    .dpad-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-cyan);
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .dpad-btn:active {
+      transform: scale(0.95);
+      background: rgba(56, 189, 248, 0.35);
+    }
+
+    .dpad-center {
+      font-size: 11px;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.08);
+      font-weight: 700;
+    }
+
+    /* Zoom Controls */
+    .canvas-zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .hud-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 26px;
+    }
+
+    .hud-btn:hover {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: var(--accent-cyan);
+      color: #fff;
+    }
+
+    .hud-btn:active {
+      transform: scale(0.95);
+    }
+
+    .hud-zoom-level {
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: 600;
+      min-width: 44px;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.08);
     }
 
     /* Node Graph Grid */
@@ -1318,6 +1566,37 @@ export class FlowPanel {
       color: var(--accent-cyan);
     }
 
+    .route-chip.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-cyan);
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.35);
+    }
+
+    .route-chip.action-chip {
+      background: rgba(255, 255, 255, 0.03);
+      border-style: dashed;
+      color: var(--text-muted);
+      padding: 1px 6px;
+    }
+
+    .route-chip.action-chip:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      border-style: solid;
+    }
+
+    .route-chips-container {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      flex-shrink: 1;
+      min-width: 0;
+    }
+
     /* Docker Body & Viewport */
     .preview-docker-body {
       flex: 1;
@@ -1597,6 +1876,9 @@ export class FlowPanel {
       <div class="pulse-dot" id="headerPulseDot"></div>
       <h1>LIVE FLOW TRACER & UX DEBUGGER</h1>
       <span class="badge-session" id="sessionLabel">IDLE</span>
+      <div id="proBadge" style="cursor: pointer; font-size: 11px; padding: 2px 7px; border-radius: 4px; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.35); color: #facc15; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Click to view license status or activate Pro">
+        <span id="proBadgeText">FREE</span>
+      </div>
       <span class="badge-session" id="viewportBadge" style="display: none; border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);"></span>
     </div>
     <div class="actions">
@@ -1607,6 +1889,7 @@ export class FlowPanel {
       <button id="btnMergeFlows" style="border-color: var(--accent-purple); color: var(--accent-purple);">🔗 Merge Flows</button>
       <button id="btnMermaid">📊 Export Mermaid (.mmd)</button>
       <button id="btnPlaywright">🎭 Export Playwright (.spec.ts)</button>
+      <button id="btnCypress">🌲 Export Cypress (.cy.ts)</button>
       <button id="btnVideoStudio" style="border-color: #f43f5e; color: #f43f5e; background: rgba(244, 63, 94, 0.1);">🎬 Video Studio (MP4 / Dubbing)</button>
     </div>
   </header>
@@ -1624,10 +1907,35 @@ export class FlowPanel {
     </div>
   </div>
 
-  <div class="main-container">
-    <div id="graphCanvas">
-      <div class="flow-grid" id="flowGrid">
-        <div style="color: var(--text-muted); font-size: 13px;">Waiting for user interactions or recorded session...</div>
+    <div id="graphCanvas" tabindex="0">
+      <div id="graphViewport" class="graph-viewport">
+        <div class="flow-grid" id="flowGrid">
+          <div style="color: var(--text-muted); font-size: 13px;">Waiting for user interactions or recorded session...</div>
+        </div>
+      </div>
+
+      <!-- Canvas Navigation HUD: 4-Directional Pan D-Pad & Zoom Controls -->
+      <div id="canvasHud" class="canvas-hud">
+        <!-- 4-Directional Pan D-Pad -->
+        <div class="canvas-dpad" title="4-Directional Canvas Pan (Arrows or Drag)">
+          <button id="btnPanUp" class="dpad-btn dpad-up" title="Pan Up (▲ or Arrow Up)">▲</button>
+          <div class="dpad-middle">
+            <button id="btnPanLeft" class="dpad-btn dpad-left" title="Pan Left (◀ or Arrow Left)">◀</button>
+            <button id="btnPanReset" class="dpad-btn dpad-center" title="Reset Center View (0)">⌖</button>
+            <button id="btnPanRight" class="dpad-btn dpad-right" title="Pan Right (▶ or Arrow Right)">▶</button>
+          </div>
+          <button id="btnPanDown" class="dpad-btn dpad-down" title="Pan Down (▼ or Arrow Down)">▼</button>
+        </div>
+
+        <div class="canvas-hud-divider"></div>
+
+        <!-- Zoom Controls -->
+        <div class="canvas-zoom-controls">
+          <button id="btnZoomOut" class="hud-btn" title="Zoom Out (Ctrl -)">−</button>
+          <button id="btnZoomLabel" class="hud-btn hud-zoom-level" title="Reset Zoom to 100% (0)">100%</button>
+          <button id="btnZoomIn" class="hud-btn" title="Zoom In (Ctrl +)">＋</button>
+          <button id="btnZoomFit" class="hud-btn" title="Fit to View (F)">⛶ Fit</button>
+        </div>
       </div>
     </div>
 
@@ -1697,21 +2005,21 @@ export class FlowPanel {
         <button id="btnPreviewReload" class="docker-icon-btn" title="Reload / Refresh Localhost Screen">🔄</button>
         <div class="url-input-wrapper">
           <span class="url-protocol-prefix">http://</span>
-          <input type="text" id="previewUrlInput" class="docker-url-input" value="http://localhost:8081" placeholder="localhost:8081..." spellcheck="false" />
+          <input type="text" id="previewUrlInput" class="docker-url-input" value="\${activeUrl}" placeholder="\${activeUrl.replace(/^https?:\\/\\//, '')}..." spellcheck="false" />
           <button id="btnPreviewGo" class="url-go-btn" title="Navigate to URL">Go</button>
         </div>
         <button id="btnPreviewBezelToggle" class="docker-pill-btn" title="Toggle Mobile Phone Bezel / Borderless Frame"><span>📱</span><span class="bezel-btn-text"> Bezel</span></button>
         <button id="btnPreviewExternal" class="docker-icon-btn" title="Open in External Browser">↗️</button>
       </div>
 
-      <!-- Quick Routes Bar -->
+      <!-- Quick Routes Bar (Dynamic Workspace Routes) -->
       <div class="preview-routes-bar" id="previewQuickRoutes">
         <span class="routes-label">Routes:</span>
-        <button class="route-chip" data-path="/">/ (Home)</button>
-        <button class="route-chip" data-path="/join">/join</button>
-        <button class="route-chip" data-path="/onboarding">/onboarding</button>
-        <button class="route-chip" data-path="/(tabs)/draft">/draft</button>
-        <button class="route-chip" data-path="/profile-setup">/profile</button>
+        <div id="routeChipsContainer" class="route-chips-container">
+        \${initialRouteChipsHtml}
+        </div>
+        <button id="btnAddCustomRoute" class="route-chip action-chip" title="Add Custom Quick Route">＋ Route</button>
+        <button id="btnRefreshRoutes" class="route-chip action-chip" title="Re-scan Workspace Routes">🔄</button>
       </div>
 
       <!-- Docker Body / Viewport Frame -->
@@ -2198,6 +2506,13 @@ export class FlowPanel {
     document.getElementById('btnCancelVideoStudio').addEventListener('click', () => {
       videoDrawer.style.display = 'none';
     });
+
+    const proBadgeEl = document.getElementById('proBadge');
+    if (proBadgeEl) {
+      proBadgeEl.addEventListener('click', () => {
+        vscode.postMessage({ command: 'checkLicenseStatus' });
+      });
+    }
 
     // Format pills selector
     const formatPills = document.querySelectorAll('#formatPillsContainer .format-pill');
@@ -2693,6 +3008,13 @@ export class FlowPanel {
       vscode.postMessage({ command: 'exportPlaywright' });
     });
 
+    const btnCypress = document.getElementById('btnCypress');
+    if (btnCypress) {
+      btnCypress.addEventListener('click', () => {
+        vscode.postMessage({ command: 'exportCypress' });
+      });
+    }
+
     document.getElementById('btnMergeFlows').addEventListener('click', () => {
       vscode.postMessage({ command: 'mergeFlows' });
     });
@@ -2703,6 +3025,7 @@ export class FlowPanel {
         currentData = msg.data;
         if (typeof msg.isRecording === 'boolean') isRecording = msg.isRecording;
         if (typeof msg.isPaused === 'boolean') isPaused = msg.isPaused;
+        if (typeof msg.isPro === 'boolean') updateProBadge(msg.isPro);
         updateSessionUI();
         renderGraph();
         renderTimeline();
@@ -2716,6 +3039,12 @@ export class FlowPanel {
           const urlInput = document.getElementById('previewUrlInput');
           if (urlInput && (urlInput.value === 'http://localhost:8081' || !urlInput.value)) {
             window.previewDockerControl.navigate(currentData.landingPage.url);
+          }
+        }
+      } else if (msg.command === 'SET_WORKSPACE_ROUTES') {
+        if (Array.isArray(msg.routes)) {
+          if (typeof renderWorkspaceRouteChips === 'function') {
+            renderWorkspaceRouteChips(msg.routes, msg.defaultUrl);
           }
         }
       } else if (msg.command === 'SHOW_PREVIEW_DOCKER') {
@@ -2745,8 +3074,27 @@ export class FlowPanel {
             '</div>';
           }).join('');
         }
+      } else if (msg.command === 'SET_LICENSE_STATE') {
+        updateProBadge(!!msg.isPro);
       }
     });
+
+    function updateProBadge(isPro) {
+      const proBadge = document.getElementById('proBadge');
+      const proBadgeText = document.getElementById('proBadgeText');
+      if (!proBadge || !proBadgeText) return;
+      if (isPro) {
+        proBadge.style.background = 'rgba(168, 85, 247, 0.15)';
+        proBadge.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+        proBadge.style.color = '#c084fc';
+        proBadgeText.textContent = '⚡ PRO';
+      } else {
+        proBadge.style.background = 'rgba(234, 179, 8, 0.12)';
+        proBadge.style.borderColor = 'rgba(234, 179, 8, 0.35)';
+        proBadge.style.color = '#facc15';
+        proBadgeText.textContent = 'FREE';
+      }
+    }
 
     function renderGraph() {
       const grid = document.getElementById('flowGrid');
@@ -3255,6 +3603,9 @@ export class FlowPanel {
         iframe.src = url;
         updatePortBadge(url);
         updateDockPillTitle();
+        if (typeof updateActiveRouteChips === 'function') {
+          updateActiveRouteChips(url);
+        }
       }
 
       function applyPreset(presetKey, zoom) {
@@ -3592,20 +3943,118 @@ export class FlowPanel {
         });
       }
 
-      // Route chips
-      const routeChips = document.querySelectorAll('.route-chip');
-      routeChips.forEach(chip => {
+      // Dynamic Workspace Route Navigation & Handlers
+      window.__workspaceDefaultUrl = '\${activeUrl}';
+      window.__workspaceRoutes = \${JSON.stringify(activeRoutes)};
+
+      function updateActiveRouteChips(url) {
+        if (!url) return;
+        try {
+          const normalized = (/^https?:\\/\\//i.test(url)) ? url : ('http://' + url);
+          const parsed = new URL(normalized);
+          const currentPath = parsed.pathname || '/';
+          const chips = document.querySelectorAll('#routeChipsContainer .route-chip');
+          chips.forEach(chip => {
+            const p = chip.getAttribute('data-path');
+            const cp = chip.getAttribute('data-clean-path');
+            if (p === currentPath || cp === currentPath || (currentPath === '/' && (p === '/' || cp === '/'))) {
+              chip.classList.add('active');
+            } else {
+              chip.classList.remove('active');
+            }
+          });
+        } catch(e) {}
+      }
+
+      function handleRouteChipClick(r) {
+        let path = r.path || r.cleanPath || '/';
+        // Handle dynamic parameter routes
+        if (path.includes('[') || path.includes(':')) {
+          const sample = prompt('Enter value for route parameter in ' + path + ':', path.replace(/\\[([^\\]]+)\\]/g, '1').replace(/:([a-zA-Z0-9_]+)/g, '1'));
+          if (sample === null) return;
+          path = sample.trim();
+        }
+
+        try {
+          const currentUrlVal = (urlInput && urlInput.value) ? urlInput.value.trim() : (window.__workspaceDefaultUrl || 'http://localhost:3000');
+          const normalizedBase = (/^https?:\\/\\//i.test(currentUrlVal)) ? currentUrlVal : ('http://' + currentUrlVal);
+          const parsed = new URL(normalizedBase);
+          parsed.pathname = path.startsWith('/') ? path : '/' + path;
+          navigatePreview(parsed.toString());
+        } catch (e) {
+          const base = window.__workspaceDefaultUrl || 'http://localhost:3000';
+          navigatePreview(base + (path.startsWith('/') ? path : '/' + path));
+        }
+      }
+
+      function renderWorkspaceRouteChips(routes, defaultUrl) {
+        window.__workspaceRoutes = routes;
+        if (defaultUrl) {
+          window.__workspaceDefaultUrl = defaultUrl;
+        }
+        const container = document.getElementById('routeChipsContainer');
+        if (!container) return;
+
+        container.innerHTML = '';
+        const list = (routes && routes.length > 0) ? routes : [{ path: '/', label: '/ (Home)' }];
+
+        list.forEach(r => {
+          const btn = document.createElement('button');
+          btn.className = 'route-chip';
+          btn.setAttribute('data-path', r.path);
+          if (r.cleanPath) btn.setAttribute('data-clean-path', r.cleanPath);
+          btn.title = (r.relativeFilePath ? r.relativeFilePath + ' ' : '') + '(' + (r.source || 'workspace') + ')';
+          btn.innerText = r.label || r.path;
+
+          btn.addEventListener('click', () => {
+            handleRouteChipClick(r);
+          });
+
+          if (r.source === 'custom') {
+            btn.title += ' (Right-click to remove)';
+            btn.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              vscode.postMessage({ command: 'removeCustomWorkspaceRoute', route: r.path });
+            });
+          }
+
+          container.appendChild(btn);
+        });
+
+        updateActiveRouteChips(urlInput ? urlInput.value : '');
+      }
+
+      // Initial Route Chip Click Listeners
+      const initialChips = document.querySelectorAll('#routeChipsContainer .route-chip');
+      initialChips.forEach(chip => {
         chip.addEventListener('click', () => {
           const path = chip.getAttribute('data-path');
-          try {
-            const currentUrl = new URL(urlInput.value);
-            currentUrl.pathname = path;
-            navigatePreview(currentUrl.toString());
-          } catch (e) {
-            navigatePreview('http://localhost:8081' + path);
-          }
+          const cleanPath = chip.getAttribute('data-clean-path');
+          handleRouteChipClick({ path: path || cleanPath, cleanPath: cleanPath || path });
         });
       });
+
+      const btnAddCustom = document.getElementById('btnAddCustomRoute');
+      if (btnAddCustom) {
+        btnAddCustom.addEventListener('click', () => {
+          const newRoute = prompt('Enter custom workspace route to preview (e.g. /dashboard or /profile):', '/');
+          if (newRoute && newRoute.trim()) {
+            const clean = newRoute.trim().startsWith('/') ? newRoute.trim() : '/' + newRoute.trim();
+            vscode.postMessage({
+              command: 'addCustomWorkspaceRoute',
+              route: clean
+            });
+            handleRouteChipClick({ path: clean, label: clean });
+          }
+        });
+      }
+
+      const btnRefresh = document.getElementById('btnRefreshRoutes');
+      if (btnRefresh) {
+        btnRefresh.addEventListener('click', () => {
+          vscode.postMessage({ command: 'refreshWorkspaceRoutes' });
+        });
+      }
 
       // Iframe load & error handling
       if (iframe) {
@@ -3664,8 +4113,208 @@ export class FlowPanel {
       updatePortBadge(urlInput.value);
     }
 
-    // Initialize Localhost Preview Docker
+    // ==========================================
+    // Schema Visualizer: Dot Matrix, Pan & Zoom
+    // ==========================================
+    function initCanvasPanAndZoom() {
+      const graphCanvas = document.getElementById('graphCanvas');
+      const graphViewport = document.getElementById('graphViewport');
+      const btnPanUp = document.getElementById('btnPanUp');
+      const btnPanDown = document.getElementById('btnPanDown');
+      const btnPanLeft = document.getElementById('btnPanLeft');
+      const btnPanRight = document.getElementById('btnPanRight');
+      const btnPanReset = document.getElementById('btnPanReset');
+      const btnZoomIn = document.getElementById('btnZoomIn');
+      const btnZoomOut = document.getElementById('btnZoomOut');
+      const btnZoomLabel = document.getElementById('btnZoomLabel');
+      const btnZoomFit = document.getElementById('btnZoomFit');
+
+      if (!graphCanvas || !graphViewport) return;
+
+      let panX = 0;
+      let panY = 0;
+      let currentZoom = 1.0;
+      let isPanning = false;
+      let startMouseX = 0;
+      let startMouseY = 0;
+      let initialPanX = 0;
+      let initialPanY = 0;
+
+      function updateTransform(animate = false) {
+        if (animate) {
+          graphViewport.classList.remove('no-transition');
+        } else {
+          graphViewport.classList.add('no-transition');
+        }
+
+        // Apply smooth 4-directional translate and zoom scaling
+        graphViewport.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px)) scale(' + currentZoom + ')';
+
+        // Synchronize the dot matrix background with pan and zoom
+        const dotSpacing = 24 * currentZoom;
+        const offsetX = ((panX % dotSpacing) + dotSpacing) % dotSpacing;
+        const offsetY = ((panY % dotSpacing) + dotSpacing) % dotSpacing;
+        const offset2X = (offsetX + dotSpacing / 2) % dotSpacing;
+        const offset2Y = (offsetY + dotSpacing / 2) % dotSpacing;
+
+        graphCanvas.style.backgroundSize = dotSpacing + 'px ' + dotSpacing + 'px, ' + dotSpacing + 'px ' + dotSpacing + 'px';
+        graphCanvas.style.backgroundPosition = offsetX + 'px ' + offsetY + 'px, ' + offset2X + 'px ' + offset2Y + 'px';
+
+        if (btnZoomLabel) {
+          btnZoomLabel.innerText = Math.round(currentZoom * 100) + '%';
+        }
+      }
+
+      function setZoom(newZoom, animate = true) {
+        currentZoom = Math.max(0.2, Math.min(2.5, Math.round(newZoom * 100) / 100));
+        updateTransform(animate);
+      }
+
+      function fitGraphToView() {
+        const grid = document.getElementById('flowGrid');
+        if (!grid || !grid.children.length) {
+          panX = 0;
+          panY = 0;
+          setZoom(1.0, true);
+          return;
+        }
+
+        const rect = grid.getBoundingClientRect();
+        const canvasRect = graphCanvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0 || canvasRect.width <= 0 || canvasRect.height <= 0) {
+          panX = 0;
+          panY = 0;
+          setZoom(1.0, true);
+          return;
+        }
+
+        const currentScale = currentZoom || 1;
+        const unscaledW = rect.width / currentScale;
+        const unscaledH = rect.height / currentScale;
+        const padding = 120;
+        const availableW = Math.max(100, canvasRect.width - padding);
+        const availableH = Math.max(100, canvasRect.height - padding);
+
+        const fitScale = Math.min(availableW / unscaledW, availableH / unscaledH);
+        panX = 0;
+        panY = 0;
+        setZoom(Math.min(1.2, Math.max(0.3, fitScale)), true);
+      }
+
+      // Expose controls on window for programmatic access or testing
+      window.schemaVisualizerControl = {
+        pan: function(dx, dy) { panX += dx; panY += dy; updateTransform(true); },
+        panTo: function(x, y) { panX = x; panY = y; updateTransform(true); },
+        zoom: function(factor) { setZoom(currentZoom * factor, true); },
+        setZoom: function(z) { setZoom(z, true); },
+        reset: function() { panX = 0; panY = 0; setZoom(1.0, true); },
+        fit: fitGraphToView,
+        getState: function() { return { panX: panX, panY: panY, zoom: currentZoom }; }
+      };
+
+      // Mouse drag to pan
+      graphCanvas.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.flow-node') || e.target.closest('.canvas-hud') || e.target.closest('button') || e.target.closest('input')) {
+          return;
+        }
+        isPanning = true;
+        graphCanvas.classList.add('is-panning');
+        startMouseX = e.clientX;
+        startMouseY = e.clientY;
+        initialPanX = panX;
+        initialPanY = panY;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        const dx = e.clientX - startMouseX;
+        const dy = e.clientY - startMouseY;
+        panX = initialPanX + dx;
+        panY = initialPanY + dy;
+        updateTransform(false);
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isPanning) {
+          isPanning = false;
+          graphCanvas.classList.remove('is-panning');
+        }
+      });
+
+      // Mouse Wheel / Trackpad Pinch & 4-Directional Pan
+      graphCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          // Pinch or Ctrl/Cmd + wheel zoom
+          const zoomDelta = e.deltaY < 0 ? 1.1 : 0.9;
+          setZoom(currentZoom * zoomDelta, false);
+        } else {
+          // 4-directional trackpad pan or vertical/horizontal wheel pan
+          panX -= e.deltaX;
+          panY -= e.deltaY;
+          updateTransform(false);
+        }
+      }, { passive: false });
+
+      // 4-Directional D-Pad Controls
+      const PAN_STEP = 80;
+      if (btnPanUp) btnPanUp.addEventListener('click', () => { panY += PAN_STEP; updateTransform(true); });
+      if (btnPanDown) btnPanDown.addEventListener('click', () => { panY -= PAN_STEP; updateTransform(true); });
+      if (btnPanLeft) btnPanLeft.addEventListener('click', () => { panX += PAN_STEP; updateTransform(true); });
+      if (btnPanRight) btnPanRight.addEventListener('click', () => { panX -= PAN_STEP; updateTransform(true); });
+      if (btnPanReset) btnPanReset.addEventListener('click', () => { panX = 0; panY = 0; setZoom(1.0, true); });
+
+      // Zoom Controls
+      if (btnZoomIn) btnZoomIn.addEventListener('click', () => { setZoom(currentZoom + 0.15, true); });
+      if (btnZoomOut) btnZoomOut.addEventListener('click', () => { setZoom(currentZoom - 0.15, true); });
+      if (btnZoomLabel) btnZoomLabel.addEventListener('click', () => { setZoom(1.0, true); });
+      if (btnZoomFit) btnZoomFit.addEventListener('click', () => { fitGraphToView(); });
+
+      // Keyboard Controls
+      window.addEventListener('keydown', (e) => {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+        const keyStep = e.shiftKey ? 150 : 60;
+        if (e.key === 'ArrowUp') {
+          panY += keyStep;
+          updateTransform(true);
+          e.preventDefault();
+        } else if (e.key === 'ArrowDown') {
+          panY -= keyStep;
+          updateTransform(true);
+          e.preventDefault();
+        } else if (e.key === 'ArrowLeft') {
+          panX += keyStep;
+          updateTransform(true);
+          e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+          panX -= keyStep;
+          updateTransform(true);
+          e.preventDefault();
+        } else if (e.key === '+' || e.key === '=') {
+          setZoom(currentZoom + 0.15, true);
+          e.preventDefault();
+        } else if (e.key === '-' || e.key === '_') {
+          setZoom(currentZoom - 0.15, true);
+          e.preventDefault();
+        } else if (e.key === '0') {
+          panX = 0;
+          panY = 0;
+          setZoom(1.0, true);
+          e.preventDefault();
+        } else if (e.key === 'f' || e.key === 'F') {
+          fitGraphToView();
+          e.preventDefault();
+        }
+      });
+
+      // Initial transform render
+      updateTransform(false);
+    }
+
+    // Initialize Localhost Preview Docker & Canvas Pan/Zoom
     initLocalhostPreviewDocker();
+    initCanvasPanAndZoom();
 
     // Inform extension webview is loaded
     vscode.postMessage({ command: 'ready' });

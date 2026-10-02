@@ -7,7 +7,7 @@
   "author": {
     "name": "JayBoFaSho"
   },
-  "license": "MIT",
+  "license": "FSL-1.1-MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/jaybofasho/Live-Schema-Flow-Tracer-UX-Debugger.git"
@@ -110,8 +110,18 @@
       },
       {
         "command": "flowtracer.exportSession",
-        "title": "Flow Tracer: Export Flow (Mermaid & Playwright)",
+        "title": "Flow Tracer: Export Flow (Mermaid, Playwright & Cypress)",
         "icon": "$(export)"
+      },
+      {
+        "command": "flowtracer.exportCypress",
+        "title": "Flow Tracer: Export Cypress E2E Test (.cy.ts)",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "flowtracer.addAssertion",
+        "title": "Flow Tracer: Add Assertion Checkpoint",
+        "icon": "$(pass)"
       },
       {
         "command": "flowtracer.mergeFlows",
@@ -152,9 +162,38 @@
         "command": "flowtracer.recordVoiceover",
         "title": "Flow Tracer: Record Microphone Voiceover & Audio Dub",
         "icon": "$(unmute)"
+      },
+      {
+        "command": "flowtracer.activateLicense",
+        "title": "Flow Tracer: Enter License Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "flowtracer.checkLicenseStatus",
+        "title": "Flow Tracer: Check License & Plan Status",
+        "icon": "$(workspace-trusted)"
+      },
+      {
+        "command": "flowtracer.deactivateLicense",
+        "title": "Flow Tracer: Deactivate / Remove License",
+        "icon": "$(sign-out)"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "flowtracer.activateLicense",
+          "when": "!flowtracer:isPro"
+        },
+        {
+          "command": "flowtracer.checkLicenseStatus",
+          "when": "true"
+        },
+        {
+          "command": "flowtracer.deactivateLicense",
+          "when": "flowtracer:isPro"
+        }
+      ],
       "editor/title": [
         {
           "command": "flowtracer.openLocalhostPreview",
@@ -264,7 +303,54 @@
         "key": "alt+shift+l",
         "mac": "cmd+alt+l"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Flow Tracer",
+      "properties": {
+        "flowtracer.licenseServerUrl": {
+          "type": "string",
+          "default": "https://license.flowtracer.dev/api/v1/activate",
+          "description": "Flow Tracer Pro license verification endpoint URL (can be customized for private or local edge deployments)."
+        },
+        "flowtracer.sidecarPort": {
+          "type": "number",
+          "default": 54321,
+          "description": "Local WebSocket port for the native capture sidecar daemon."
+        },
+        "flowtracer.cdpPort": {
+          "type": "number",
+          "default": 9222,
+          "description": "Chrome DevTools Protocol remote debugging port."
+        },
+        "flowtracer.defaultViewport": {
+          "type": "string",
+          "default": "Desktop HD",
+          "description": "Default viewing proportions preset (e.g. Desktop HD, iPhone 15 Pro, iPad Air)."
+        },
+        "flowtracer.defaultVideoPreset": {
+          "type": "string",
+          "default": "balanced",
+          "enum": [
+            "ultra",
+            "high",
+            "balanced",
+            "compact",
+            "maximum"
+          ],
+          "description": "Default compression preset for video exports."
+        },
+        "flowtracer.enableActionHighlights": {
+          "type": "boolean",
+          "default": true,
+          "description": "Toggle glowing cursor beacons and step badges in exported recordings."
+        },
+        "flowtracer.speechLanguage": {
+          "type": "string",
+          "default": "en-US",
+          "description": "Target language code for Speech-to-Text transcription."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

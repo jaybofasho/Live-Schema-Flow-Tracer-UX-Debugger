@@ -4,16 +4,25 @@ import { DebugController } from '../dap/DebugController';
 import { LandingPageDetector, LandingPageCandidate } from '../discovery/LandingPageDetector';
 import { DEVICE_PRESETS, DEFAULT_VIEWPORT, ViewportConfig, DevicePreset } from '../device/DevicePresets';
 import { FlowPanel } from './FlowPanel';
+import { LicenseManager } from '../license/LicenseManager';
 
 export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'flowtracer.flowLensSidebar';
   private _view?: vscode.WebviewView;
+  private _licenseManager?: LicenseManager;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _model: FlowGraphModel,
-    private readonly _debugController: DebugController
-  ) {}
+    private readonly _debugController: DebugController,
+    licenseManager?: LicenseManager
+  ) {
+    this._licenseManager = licenseManager;
+  }
+
+  public setLicenseManager(lm: LicenseManager): void {
+    this._licenseManager = lm;
+  }
 
   private _isRecording: boolean = false;
   private _isPaused: boolean = false;
@@ -106,6 +115,14 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
           await vscode.commands.executeCommand('flowtracer.recordVoiceover');
           break;
 
+        case 'activateLicense':
+          await vscode.commands.executeCommand('flowtracer.activateLicense');
+          break;
+
+        case 'checkLicenseStatus':
+          await vscode.commands.executeCommand('flowtracer.checkLicenseStatus');
+          break;
+
         case 'openFile':
           if (message.filePath) {
             try {
@@ -159,15 +176,21 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public updateData(isRecording?: boolean, isPaused?: boolean): void {
+  public async updateData(isRecording?: boolean, isPaused?: boolean): Promise<void> {
     if (typeof isRecording === 'boolean') this._isRecording = isRecording;
     if (typeof isPaused === 'boolean') this._isPaused = isPaused;
+    const isPro = this._licenseManager ? await this._licenseManager.isProUser() : false;
     if (this._view) {
       this._view.webview.postMessage({
         command: 'UPDATE_GRAPH',
         data: this._model.toJSON(),
         isRecording: this._isRecording,
-        isPaused: this._isPaused
+        isPaused: this._isPaused,
+        isPro
+      });
+      this._view.webview.postMessage({
+        command: 'SET_LICENSE_STATE',
+        isPro
       });
     }
   }
@@ -758,9 +781,14 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
         </svg>
         ANTIGRAVITY TRACER
       </div>
-      <div class="status-badge" id="statusPill">
-        <span class="status-dot"></span>
-        <span id="statusText">IDLE</span>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <div class="status-badge" id="proBadge" style="cursor: pointer; background: rgba(234, 179, 8, 0.12); border-color: rgba(234, 179, 8, 0.35); color: #facc15;" title="Click to view license status or activate Pro">
+          <span id="proBadgeText">FREE</span>
+        </div>
+        <div class="status-badge" id="statusPill">
+          <span class="status-dot"></span>
+          <span id="statusText">IDLE</span>
+        </div>
       </div>
     </div>
 
@@ -942,10 +970,32 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
         renderSteps();
         if (selectedNode) {
           const fresh = (currentData.nodes || []).find(n => n.id === selectedNode.id);
-          if (fresh) selectNode(fresh);
+        if (msg.isPro !== undefined) {
+          updateProBadge(!!msg.isPro);
         }
       }
+
+      if (msg.command === 'SET_LICENSE_STATE') {
+        updateProBadge(!!msg.isPro);
+      }
     });
+
+    function updateProBadge(isPro) {
+      const proBadge = document.getElementById('proBadge');
+      const proBadgeText = document.getElementById('proBadgeText');
+      if (!proBadge || !proBadgeText) return;
+      if (isPro) {
+        proBadge.style.background = 'rgba(168, 85, 247, 0.15)';
+        proBadge.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+        proBadge.style.color = '#c084fc';
+        proBadgeText.textContent = '⚡ PRO';
+      } else {
+        proBadge.style.background = 'rgba(234, 179, 8, 0.12)';
+        proBadge.style.borderColor = 'rgba(234, 179, 8, 0.35)';
+        proBadge.style.color = '#facc15';
+        proBadgeText.textContent = 'FREE';
+      }
+    }
 
     function updateSessionState() {
       const statusPill = document.getElementById('statusPill');
@@ -1271,6 +1321,13 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
     if (btnCopyT) {
       btnCopyT.addEventListener('click', () => {
         vscode.postMessage({ command: 'copyTranscript', format: 'markdown' });
+      });
+    }
+
+    const proBadgeEl = document.getElementById('proBadge');
+    if (proBadgeEl) {
+      proBadgeEl.addEventListener('click', () => {
+        vscode.postMessage({ command: 'checkLicenseStatus' });
       });
     }
 

@@ -19,6 +19,8 @@ export class MermaidExporter {
     lines.push('  classDef handler fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;');
     lines.push('  classDef breakpoint fill:#701a75,stroke:#f472b6,stroke-width:2px,color:#fff;');
     lines.push('  classDef note fill:#312e81,stroke:#a78bfa,stroke-width:1.5px,color:#f5f3ff;');
+    lines.push('  classDef assertion fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;');
+    lines.push('  classDef network fill:#1e1b4b,stroke:#6366f1,stroke-width:1.5px,color:#e0e7ff;');
     lines.push('');
 
     // Nodes
@@ -30,6 +32,10 @@ export class MermaidExporter {
 
       if (node.data.isJunction) {
         lines.push(`  ${sanitizedId}{{"🔀 ${cleanTitle}<br/><b>[JUNCTION]</b>"}}:::junction`);
+      } else if (node.data.badge === 'ASSERTION') {
+        lines.push(`  ${sanitizedId}{{"✅ ${cleanTitle}"}}:::assertion`);
+      } else if (node.data.badge === 'API') {
+        lines.push(`  ${sanitizedId}[/"🌐 ${cleanTitle}"/]:::network`);
       } else if (node.type === 'screen') {
         lines.push(`  ${sanitizedId}[${labelText}]:::screen`);
       } else if (node.type === 'handler') {

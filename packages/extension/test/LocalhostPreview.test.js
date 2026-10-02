@@ -58,16 +58,17 @@ test('Localhost Preview: FlowPanel contains complete moveable, scalable, collaps
   assert.ok(content.includes('id="btnPreviewClose"'), 'Must have close button');
   assert.ok(content.includes('id="btnResetPreviewPos"'), 'Must have center reset position button');
 
-  // Address Bar & Route Navigation
+  // Address Bar & Dynamic Workspace Route Navigation
   assert.ok(content.includes('id="previewUrlInput"'), 'Must have URL address input');
-  assert.ok(content.includes('value="http://localhost:8081"'), 'Must default to Expo Web port 8081');
   assert.ok(content.includes('id="btnPreviewGo"'), 'Must have Go navigation button');
   assert.ok(content.includes('id="btnPreviewReload"'), 'Must have reload button');
   assert.ok(content.includes('id="btnPreviewBezelToggle"'), 'Must have phone bezel toggle');
   assert.ok(content.includes('id="btnPreviewExternal"'), 'Must have open external browser button');
-  assert.ok(content.includes('class="route-chip" data-path="/"'), 'Must have root route chip');
-  assert.ok(content.includes('data-path="/join"'), 'Must have /join route chip');
-  assert.ok(content.includes('data-path="/(tabs)/draft"'), 'Must have /draft route chip');
+  assert.ok(content.includes('id="previewQuickRoutes"'), 'Must have quick routes bar');
+  assert.ok(content.includes('id="routeChipsContainer"'), 'Must have dynamic route chips container');
+  assert.ok(content.includes('id="btnAddCustomRoute"'), 'Must have add custom quick route button');
+  assert.ok(content.includes('id="btnRefreshRoutes"'), 'Must have re-scan workspace routes button');
+  assert.ok(content.includes('class="route-chip'), 'Must have route chips');
 
   // Status & Offline Recovery
   assert.ok(content.includes('id="previewOfflineOverlay"'), 'Must have offline fallback overlay');
@@ -78,6 +79,8 @@ test('Localhost Preview: FlowPanel contains complete moveable, scalable, collaps
   // Script Initialization & Event Handlers
   assert.ok(content.includes('function initLocalhostPreviewDocker()'), 'Must define initLocalhostPreviewDocker()');
   assert.ok(content.includes('window.previewDockerControl ='), 'Must expose window.previewDockerControl');
+  assert.ok(content.includes("msg.command === 'SET_WORKSPACE_ROUTES'"), 'Must handle SET_WORKSPACE_ROUTES');
+  assert.ok(content.includes('function renderWorkspaceRouteChips'), 'Must define dynamic route rendering');
   assert.ok(content.includes("msg.command === 'SHOW_PREVIEW_DOCKER'"), 'Must handle SHOW_PREVIEW_DOCKER');
   assert.ok(content.includes("msg.command === 'TOGGLE_PREVIEW_DOCKER'"), 'Must handle TOGGLE_PREVIEW_DOCKER');
 });

@@ -1,0 +1,14 @@
+name = "flowtracer-license-api"
+main = "cloudflare-worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment Variables (Secrets should be set via `wrangler secret put <NAME>`)
+# Required Secrets:
+#   - POLAR_ACCESS_TOKEN
+#   - POLAR_ORGANIZATION_ID
+#   - ED25519_PRIVATE_KEY
+#
+# Optional:
+# [vars]
+# DEV_BYPASS_KEY = "FT-DEV-TEST-OVERRIDE"

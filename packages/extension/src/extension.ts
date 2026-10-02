@@ -9,6 +9,7 @@ import { FlowGraphModel } from './graph/FlowGraphModel';
 import { FlowPanel } from './webview/FlowPanel';
 import { MermaidExporter } from './export/MermaidExporter';
 import { PlaywrightExporter } from './export/PlaywrightExporter';
+import { CypressExporter } from './export/CypressExporter';
 import {
   VideoRecordingExporter,
   VideoExportConfig,
@@ -21,12 +22,14 @@ import {
   LandingPageCandidate,
   WorkspaceSchemaCandidate
 } from './discovery/LandingPageDetector';
+import { WorkspaceRouteDetector } from './discovery/WorkspaceRouteDetector';
 import {
   DEVICE_PRESETS,
   DEFAULT_VIEWPORT,
   ViewportConfig,
   createDynamicViewport
 } from './device/DevicePresets';
+import { LicenseManager } from './license/LicenseManager';
 
 let sidecarProcess: SidecarProcess;
 let sidecarClient: SidecarClient;
@@ -35,11 +38,16 @@ let debugController: DebugController;
 let flowModel: FlowGraphModel;
 let statusBarItem: vscode.StatusBarItem;
 let sidebarProvider: FlowSidebarViewProvider;
+let licenseManager: LicenseManager;
 let isRecording: boolean = false;
 let isPaused: boolean = false;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[Antigravity Tracer] Extension activating...');
+
+  licenseManager = new LicenseManager(context);
+  await licenseManager.initialize();
+  FlowPanel.licenseManager = licenseManager;
 
   flowModel = new FlowGraphModel();
   sidecarProcess = new SidecarProcess();
@@ -48,7 +56,7 @@ export async function activate(context: vscode.ExtensionContext) {
   debugController = new DebugController();
 
   // Register Sidebar Webview View Provider for Secondary Sidebar (Right Toolbar)
-  sidebarProvider = new FlowSidebarViewProvider(context.extensionUri, flowModel, debugController);
+  sidebarProvider = new FlowSidebarViewProvider(context.extensionUri, flowModel, debugController, licenseManager);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       FlowSidebarViewProvider.viewType,
@@ -183,6 +191,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Command: Record Microphone Voiceover & Audio Dub (opens Video/Audio Studio drawer)
   context.subscriptions.push(
     vscode.commands.registerCommand('flowtracer.recordVoiceover', async () => {
+      if (!(await licenseManager.enforceProFeature('Microphone Voiceover & Audio Dubbing Studio'))) {
+        return;
+      }
       const panel = FlowPanel.createOrShow(context.extensionUri, flowModel, debugController, isRecording, isPaused);
       panel.openVideoStudio();
     })
@@ -213,27 +224,70 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // 8. Command: Export Session (Mermaid & Playwright)
+  // 8. Command: Export Session (Mermaid, Playwright & Cypress)
   context.subscriptions.push(
     vscode.commands.registerCommand('flowtracer.exportSession', async () => {
       const selection = await vscode.window.showQuickPick(
-        ['Mermaid State Graph (.mmd)', 'Playwright E2E Test (.spec.ts)', 'Both'],
+        ['Mermaid State Graph (.mmd)', 'Playwright E2E Test (.spec.ts)', 'Cypress E2E Test (.cy.ts)', 'All Formats'],
         { placeHolder: 'Select export format' }
       );
 
       if (!selection) return;
 
-      if (selection === 'Mermaid State Graph (.mmd)' || selection === 'Both') {
+      if (selection === 'Mermaid State Graph (.mmd)' || selection === 'All Formats') {
         const mmd = MermaidExporter.export(flowModel);
         const doc = await vscode.workspace.openTextDocument({ content: mmd, language: 'markdown' });
         await vscode.window.showTextDocument(doc);
       }
 
-      if (selection === 'Playwright E2E Test (.spec.ts)' || selection === 'Both') {
+      if (selection === 'Playwright E2E Test (.spec.ts)' || selection === 'All Formats') {
         const spec = PlaywrightExporter.export(flowModel);
         const doc = await vscode.workspace.openTextDocument({ content: spec, language: 'typescript' });
         await vscode.window.showTextDocument(doc);
       }
+
+      if (selection === 'Cypress E2E Test (.cy.ts)' || selection === 'All Formats') {
+        const cy = CypressExporter.export(flowModel);
+        const doc = await vscode.workspace.openTextDocument({ content: cy, language: 'typescript' });
+        await vscode.window.showTextDocument(doc);
+      }
+    })
+  );
+
+  // Command: Dedicated Cypress Export
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flowtracer.exportCypress', async () => {
+      const cy = CypressExporter.export(flowModel);
+      const doc = await vscode.workspace.openTextDocument({ content: cy, language: 'typescript' });
+      await vscode.window.showTextDocument(doc);
+    })
+  );
+
+  // Command: Add Assertion Checkpoint
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flowtracer.addAssertion', async () => {
+      const assertionType = await vscode.window.showQuickPick(
+        ['VISIBLE', 'TEXT_CONTAINS', 'TEXT_EQUALS', 'URL_MATCHES', 'HIDDEN'],
+        { placeHolder: 'Select Assertion Checkpoint Type' }
+      );
+      if (!assertionType) return;
+      let expected = '';
+      if (assertionType !== 'VISIBLE' && assertionType !== 'HIDDEN') {
+        expected = (await vscode.window.showInputBox({
+          prompt: `Enter expected value for ${assertionType}`,
+          placeHolder: 'e.g. Dashboard, /portal, Submit'
+        })) || '';
+      }
+      flowModel.addStepEvent({
+        type: 'EVENT_ASSERTION',
+        assertionType,
+        expected,
+        target: { tagName: 'assertion', selector: 'body' }
+      });
+      if (FlowPanel.currentPanel) {
+        FlowPanel.currentPanel.updateData(isRecording, isPaused);
+      }
+      vscode.window.showInformationMessage(`Assertion checkpoint (${assertionType}) recorded!`);
     })
   );
 
@@ -289,6 +343,15 @@ export async function activate(context: vscode.ExtensionContext) {
           includeFlowPosition: true,
           marketingTitle: 'Flow Tracer UX Recording'
         };
+      }
+
+      // Check Pro gating for Studio-grade formats and ultra/high presets
+      const isFreeFormat = config.format === 'html5' || config.format === 'webm';
+      const isFreePreset = config.preset === 'balanced' || config.preset === 'compact';
+      if (!isFreeFormat || !isFreePreset) {
+        if (!(await licenseManager.enforceProFeature(`Studio Video Export (${config.format.toUpperCase()} / ${config.preset})`))) {
+          return;
+        }
       }
 
       // Compute live file size estimate
@@ -734,9 +797,34 @@ export async function activate(context: vscode.ExtensionContext) {
         format = formatParam as any;
       }
 
+      if (format === 'jira' || format === 'srt') {
+        if (!(await licenseManager.enforceProFeature(`Copy Transcript in ${format.toUpperCase()} format`))) {
+          return;
+        }
+      }
+
       const text = flowModel.getFormattedTranscript(format);
       await vscode.env.clipboard.writeText(text);
       vscode.window.showInformationMessage(`Copied ${format.toUpperCase()} transcript to clipboard (${flowModel.speechTranscripts.length} entries).`);
+    })
+  );
+
+  // License Management Commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flowtracer.activateLicense', async () => {
+      await licenseManager.promptAndActivate();
+      if (sidebarProvider) sidebarProvider.updateData();
+      if (FlowPanel.currentPanel) FlowPanel.currentPanel.updateData();
+    }),
+    vscode.commands.registerCommand('flowtracer.checkLicenseStatus', async () => {
+      await licenseManager.checkLicenseStatus();
+      if (sidebarProvider) sidebarProvider.updateData();
+      if (FlowPanel.currentPanel) FlowPanel.currentPanel.updateData();
+    }),
+    vscode.commands.registerCommand('flowtracer.deactivateLicense', async () => {
+      await licenseManager.deactivateLicense();
+      if (sidebarProvider) sidebarProvider.updateData();
+      if (FlowPanel.currentPanel) FlowPanel.currentPanel.updateData();
     })
   );
 
@@ -858,7 +946,8 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('flowtracer.openLocalhostPreview', async (targetUrl?: string) => {
       const panel = FlowPanel.createOrShow(context.extensionUri, flowModel, debugController, isRecording, isPaused);
-      const url = targetUrl || flowModel.landingPage?.url || 'http://localhost:8081';
+      const scan = WorkspaceRouteDetector.discoverWorkspaceRoutesSync(undefined, flowModel);
+      const url = targetUrl || flowModel.landingPage?.url || scan.defaultDevUrl || 'http://localhost:3000';
       panel.showPreviewDocker(url);
       vscode.window.showInformationMessage(`📱 Flow Tracer: Preview window active in Center Editor (${url})`);
     })
@@ -871,6 +960,32 @@ export async function activate(context: vscode.ExtensionContext) {
       panel.togglePreviewDocker();
     })
   );
+
+  // Dynamic Workspace Routes Watcher
+  try {
+    const routeWatcher = vscode.workspace.createFileSystemWatcher(
+      '**/{app,pages,src,routes}/**/*.{tsx,jsx,ts,js,html,vue,svelte}'
+    );
+    let routeDebounceTimer: any = null;
+    const triggerRouteRefresh = () => {
+      if (routeDebounceTimer) clearTimeout(routeDebounceTimer);
+      routeDebounceTimer = setTimeout(async () => {
+        if (FlowPanel.currentPanel) {
+          await FlowPanel.currentPanel.refreshWorkspaceRoutes();
+        }
+      }, 400);
+    };
+
+    routeWatcher.onDidCreate(triggerRouteRefresh, null, context.subscriptions);
+    routeWatcher.onDidDelete(triggerRouteRefresh, null, context.subscriptions);
+    context.subscriptions.push(routeWatcher);
+
+    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      if (FlowPanel.currentPanel) {
+        await FlowPanel.currentPanel.refreshWorkspaceRoutes();
+      }
+    }, null, context.subscriptions);
+  } catch {}
 
   console.log('[Flow Tracer] Extension successfully activated.');
 }

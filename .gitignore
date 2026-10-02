@@ -39,3 +39,9 @@ coverage/
 # System / Scratch Artifacts
 .system_generated/
 packages/*.jpg
+*.tsbuildinfo
+server/*.js
+server/*.js.map
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+launch/

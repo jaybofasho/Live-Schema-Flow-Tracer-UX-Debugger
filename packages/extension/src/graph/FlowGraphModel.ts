@@ -266,6 +266,28 @@ export class FlowGraphModel {
       type = 'breakpoint';
       label = `Debug: ${handlerName || componentName || 'Breakpoint'}`;
       subtitle = filePath ? `${filePath}:${lineNumber}` : 'Dynamic Breakpoint';
+    } else if (event.type === 'EVENT_INPUT') {
+      type = 'action';
+      const val = event.valueMasked || event.value || '';
+      const targetName = componentName || event.target?.tagName || 'Field';
+      label = `Input: ${targetName} = "${val}"`;
+      subtitle = event.target?.resilientSelector || event.target?.selector || 'DOM Input';
+    } else if (event.type === 'EVENT_ASSERTION') {
+      type = 'action';
+      const assertionType = event.assertionType || 'VISIBLE';
+      const expected = event.expected ? ` "${event.expected.slice(0, 25)}"` : '';
+      label = `Assert: ${assertionType}${expected}`;
+      subtitle = event.target?.resilientSelector || event.target?.selector || 'State Assertion';
+    } else if (event.type === 'EVENT_NETWORK') {
+      type = 'action';
+      const method = event.method || 'GET';
+      let urlPath = event.url || '/api';
+      try {
+        urlPath = new URL(event.url, 'http://localhost').pathname;
+      } catch {}
+      const status = event.status ? ` [${event.status}]` : '';
+      label = `API: ${method} ${urlPath}${status}`;
+      subtitle = `${event.durationMs !== undefined ? `${event.durationMs}ms • ` : ''}${event.url || 'Network Request'}`;
     }
 
     const node: FlowNode = {
@@ -282,7 +304,15 @@ export class FlowGraphModel {
         filePath,
         lineNumber,
         handlerName,
-        badge: isReturningToVisitedPos ? '⮌ RETURN' : type.toUpperCase(),
+        badge: isReturningToVisitedPos
+          ? '⮌ RETURN'
+          : event.type === 'EVENT_ASSERTION'
+          ? 'ASSERTION'
+          : event.type === 'EVENT_NETWORK'
+          ? 'API'
+          : event.type === 'EVENT_INPUT'
+          ? 'INPUT'
+          : type.toUpperCase(),
         coords: event.x && event.y ? { x: event.x, y: event.y } : undefined,
         flowPositionId: newPosition.id,
         flowPositionName: newPosition.name,
