@@ -970,6 +970,8 @@ export class FlowSidebarViewProvider implements vscode.WebviewViewProvider {
         renderSteps();
         if (selectedNode) {
           const fresh = (currentData.nodes || []).find(n => n.id === selectedNode.id);
+          if (fresh) selectNode(fresh);
+        }
         if (msg.isPro !== undefined) {
           updateProBadge(!!msg.isPro);
         }
